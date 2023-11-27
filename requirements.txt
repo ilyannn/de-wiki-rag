@@ -1,0 +1,5 @@
+txtai
+datasets
+openai
+python-dotenv
+tiktoken

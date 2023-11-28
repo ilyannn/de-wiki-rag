@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """Generate context using German Wikipedia articles.
 
-We take top 10% paragraphs (ranked by article views), embed them using a large 
-multilingual model, and cache the embeddings. For each question we retrieve the pieces 
-of context and rescore them using Pulze API. We demonstrate what the answers look with 
-and without using the context.
+We take the top 10% paragraphs (ranked by article views), embed them using a large 
+multilingual model, and cache the embeddings.
+For each question, we retrieve the pieces of context and rescore them using Pulze API.
+We demonstrate what the answers look with and without using the context.
  """
 
 import logging
@@ -32,7 +32,7 @@ DATASET_PATH = "data/de-wiki-22-12-cohere-by-views"
 
 # much better than the default one for German text
 EMBEDDINGS_MODEL = "intfloat/multilingual-e5-large"
-EMBEDDINGS_HOW_MANY_K = 1500  # total size of the dataset is 15M embeddings
+EMBEDDINGS_HOW_MANY_K = 1500  # the total size of the dataset is 15m embeddings
 EMBEDDINGS_PATH = f"data/de-wiki-multilingual-e5-large-top-{EMBEDDINGS_HOW_MANY_K}k"
 
 CONTEXT_CHOICES = 20
@@ -131,7 +131,7 @@ def run_loop(client, data, embeddings, question):
             .message.content
         )
 
-    def format_chunck(chunk_id):
+    def format_chunk(chunk_id):
         return f"""{chunk_id} [{data[chunk_id]["title"]}] {data[chunk_id]["text"]}"""
 
     while question:
@@ -160,12 +160,12 @@ def run_loop(client, data, embeddings, question):
                 print("---- Accepted ----")
                 accepted_ids = [int(s) for s in completion.split()]
                 for cid in accepted_ids:
-                    print(format_chunck(cid))
+                    print(format_chunk(cid))
 
                 print("---- Rejected ----")
                 rejected_ids = set(cid for cid, _ in ids_scores) - set(accepted_ids)
                 for cid in rejected_ids:
-                    print(format_chunck(cid))
+                    print(format_chunk(cid))
 
                 context = build_context(data[cid] for cid in accepted_ids)
 

@@ -126,6 +126,7 @@ def run_loop(client, data, embeddings, question):
                     }
                 ],
                 model=OPENAI_MODEL,
+                max_tokens=8192,
             )
             .choices[0]
             .message.content
@@ -135,7 +136,7 @@ def run_loop(client, data, embeddings, question):
         return f"""{chunk_id} [{data[chunk_id]["title"]}] {data[chunk_id]["text"]}"""
 
     while question:
-        logging.info("Answering %s", question)
+        logging.info("Answering '%s'", question)
 
         ids_scores = embeddings.search(question, limit=CONTEXT_CHOICES)
         for row_id, score in ids_scores:
@@ -157,8 +158,14 @@ def run_loop(client, data, embeddings, question):
             logging.error("API wasn't happy: %s", e)
         else:
             try:
+                # While ChatGPT correctly returned only the ids of accepted chunks,
+                # other models may add text before or after the chunk id list.
+                accepted_id_string = next(
+                    s for s in completion.split() if s and s[0].isdigit()
+                )
                 print("---- Accepted ----")
-                accepted_ids = [int(s) for s in completion.split()]
+
+                accepted_ids = [int(s) for s in accepted_id_string.split()]
                 for cid in accepted_ids:
                     print(format_chunk(cid))
 
@@ -177,7 +184,9 @@ def run_loop(client, data, embeddings, question):
 
             except ValueError:
                 logging.warning(
-                    "Received a response that I cannot parse: %s", completion
+                    "Received a response to '%s' that I cannot parse: '%s'",
+                    rescoring_prompt,
+                    completion,
                 )
 
         question = input("Question: ")

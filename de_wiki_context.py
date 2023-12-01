@@ -162,7 +162,9 @@ def run_loop(client, data, embeddings, question):
                 # While ChatGPT correctly returned only the ids of accepted chunks,
                 # other models may add text before or after the chunk id list.
                 accepted_id_string = next(
-                    s for s in completion.split("\n") if s and s[0].isdigit()
+                    s
+                    for s in completion.split("\n")
+                    if s and all(all(ch.isdigit() for ch in sub) for sub in s.split())
                 )
                 print("---- Accepted ----")
 

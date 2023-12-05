@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import random
-from json import JSONDecodeError
 
 import dotenv
 import openai
@@ -101,24 +100,29 @@ Assistant: <answer>"""
 
 def question_prompt(query, context_string=None):
     """Prepare a question prompt that optionally includes a context"""
-    return f"""
+    return (
+        f"""
 
 
 Human:
 You are a question-answer engine who takes great care to provide the most accurate answer. 
 Answer the following question in German to the best of your ability: {query}
 Aim at several paragraphs that show clear and reasoned thinking. 
-    """ + (
-        ""
-        if not context_string
-        else f"""
+    """
+        + (
+            ""
+            if not context_string
+            else f"""
 The following context pieces, taken from recent Wikipedia articles, might be helpful in the answer:
 {context_string}
-""" ) + """
+"""
+        )
+        + """
 Please output your answer within <answer></answer> tags.
 
 
 Assistant: <answer>"""
+    )
 
 
 def run_loop(client, data, embeddings, question):
@@ -128,7 +132,7 @@ def run_loop(client, data, embeddings, question):
     except KeyError:
         encoding = tiktoken.encoding_for_model("gpt-4")
 
-    def complete(prompt, output_json: bool=False):
+    def complete(prompt, output_json: bool = False):
         return (
             client.chat.completions.create(
                 messages=[
@@ -148,8 +152,6 @@ def run_loop(client, data, embeddings, question):
     def format_chunk(chunk_id):
         return f"""{chunk_id} [{data[chunk_id]["title"]}] {data[chunk_id]["text"]}"""
 
-    decode_json = json.JSONDecoder(strict=True)
-    
     while question:
         logging.info("Answering '%s'", question)
 
@@ -159,7 +161,8 @@ def run_loop(client, data, embeddings, question):
 
         while True:
             rescoring_prompt = context_rescoring_prompt(
-                question, (data[row_id] for row_id, _ in ids_scores),
+                question,
+                (data[row_id] for row_id, _ in ids_scores),
             )
             prompt_length = len(encoding.encode(rescoring_prompt))
             logging.debug(rescoring_prompt)
@@ -173,7 +176,7 @@ def run_loop(client, data, embeddings, question):
             logging.error("API wasn't happy: %s", e)
         else:
             try:
-                if completion[0] == '[' or completion[0].isdigit():
+                if completion[0] == "[" or completion[0].isdigit():
                     accepted_id_string = completion
                 else:
                     # While ChatGPT correctly returns only the ids of accepted chunks in JSON format,
@@ -181,22 +184,36 @@ def run_loop(client, data, embeddings, question):
                     accepted_id_string = next(
                         s
                         for s in completion.split("\n")
-                        if s and all(all(ch.isdigit() or ch in "[]," for ch in sub) for sub in s.split())
+                        if s
+                        and all(
+                            all(ch.isdigit() or ch in "[]," for ch in sub)
+                            for sub in s.split()
+                        )
                     )
 
                 try:
                     returned_ids = json.loads(accepted_id_string)
-                    assert isinstance(returned_ids, list) and all(isinstance(i, int) for i in returned_ids)
+                    assert isinstance(returned_ids, list) and all(
+                        isinstance(i, int) for i in returned_ids
+                    )
                 except (AssertionError, json.JSONDecodeError):
                     returned_ids = [int(s) for s in accepted_id_string.split()]
 
-                assert isinstance(returned_ids, list) and all(isinstance(i, int) for i in returned_ids)
+                assert isinstance(returned_ids, list) and all(
+                    isinstance(i, int) for i in returned_ids
+                )
 
-                if invented_ids := set(returned_ids) - {row_id for row_id, _ in ids_scores}:
-                    logging.info(f"The model invented following context IDs: {invented_ids}")
-                
+                if invented_ids := set(returned_ids) - {
+                    row_id for row_id, _ in ids_scores
+                }:
+                    logging.info(
+                        f"The model invented following context IDs: {invented_ids}"
+                    )
+
                 print("---- Accepted ----")
-                accepted_ids = [row_id for row_id in returned_ids if row_id not in invented_ids]
+                accepted_ids = [
+                    row_id for row_id in returned_ids if row_id not in invented_ids
+                ]
                 for cid in accepted_ids:
                     print(format_chunk(cid))
 

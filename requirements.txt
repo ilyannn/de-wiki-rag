@@ -2,4 +2,5 @@ txtai
 datasets
 openai
 python-dotenv
+redis
 tiktoken

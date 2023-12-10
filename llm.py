@@ -1,6 +1,8 @@
 import re
 import tiktoken
 
+ANSWER_REGEX = re.compile(r"<answer>(.*?)</answer>", flags=re.DOTALL)
+
 
 class LLM:
     def __init__(self, client, model_name, max_answer_tokens):
@@ -34,7 +36,7 @@ class LLM:
 
     def answer(self, prompt, output_json: bool = False):
         """Ask LLM and parse the answer.
-        
+
         :param prompt: The prompt for generating the answer.
         :param output_json: A boolean indicating whether the response should be returned as JSON. Default is False.
         :return: The generated answer.
@@ -60,4 +62,4 @@ class LLM:
         # Sometimes we get "bla bla bla: good stuff</answer>"
         if "<answer>" not in response_content:
             return response_content.removesuffix("</answer>")
-        return re.search(r"<answer>(.*?)</answer>", response_content, ).group(1)
+        return ANSWER_REGEX.search(response_content).group(1)

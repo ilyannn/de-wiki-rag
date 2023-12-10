@@ -36,13 +36,23 @@ EMBEDDINGS_HOW_MANY_K = 1500  # note the total size of the dataset is 15m embedd
 EMBEDDINGS_PATH = f"data/de-wiki-multilingual-e5-large-top-{EMBEDDINGS_HOW_MANY_K}k"
 
 CONTEXT_CHOICES = 20
+
 MODEL = "pulze"
 MODEL_CONTEXT_LENGTH = 8192
-
 MAX_ANSWER_TOKENS = min(4096, MODEL_CONTEXT_LENGTH)
 
 
-def load_data_embeddings():
+class Corpus:
+    def __init__(
+        self,
+        data: dict[int:str],
+        embeddings: Embeddings,
+    ):
+        self.data = data
+        self.embeddings = embeddings
+
+
+def load_corpus() -> Corpus:
     """Load and cache the dataset and its embeddings."""
     try:
         data = load_from_disk(DATASET_PATH, keep_in_memory=True)
@@ -68,7 +78,7 @@ def load_data_embeddings():
         embeddings.save(EMBEDDINGS_PATH)
         logging.info(f"Saved {embeddings.count()} embeddings to {EMBEDDINGS_PATH}")
 
-    return data, embeddings
+    return Corpus(data, embeddings)
 
 
 def build_context(context_chunks):
@@ -112,16 +122,14 @@ Aim at several paragraphs that show clear and reasoned thinking.
 
 
 def get_context_ids(
-    llm: LLM,
     question: str,
-    data: dict[int:str],
-    embeddings: Embeddings,
+    corpus: Corpus,
+    llm: LLM,
 ) -> (list[int], list[int]):
     """
-    :param llm: The language model abstraction used for completion.
     :param question: The question for which we want to find the context.
-    :param data: Chunks of context within which we look for context.
-    :param embeddings: The embeddings of data.
+    :param corpus: Corpus within which we look for context.
+    :param llm: The language model abstraction used for completion.
     :return: A tuple containing suggested context IDs and IDs rejected when scoring.
 
     This method searches for context IDs within the provided embeddings based on the given question.
@@ -129,14 +137,14 @@ def get_context_ids(
     If any invented (hallucinated) IDs are found, they are logged.
     Finally, the method returns the accepted and rejected IDs as a tuple or a (None, None) pair
     """
-    ids_scores = embeddings.search(question, limit=CONTEXT_CHOICES)
+    ids_scores = corpus.embeddings.search(question, limit=CONTEXT_CHOICES)
     for row_id, score in ids_scores:
-        logging.debug(score, data[row_id])
+        logging.debug(score, corpus.data[row_id])
 
     while True:
         rescoring_prompt = context_rescoring_prompt(
             question,
-            (data[row_id] for row_id, _ in ids_scores),
+            (corpus.data[row_id] for row_id, _ in ids_scores),
         )
         prompt_length = len(llm.encoding.encode(rescoring_prompt))
         logging.debug(rescoring_prompt)
@@ -204,8 +212,10 @@ def get_context_ids(
     return [], []
 
 
-def run_loop(llm: LLM, data, embeddings, question):
+def run_loop(llm: LLM, corpus: Corpus, question: str):
     """Run an interactive loop to test the context retrieval"""
+
+    data = corpus.data
 
     def format_chunk(chunk_id):
         return f"""{chunk_id} [{data[chunk_id]["title"]}] {data[chunk_id]["text"]}"""
@@ -213,7 +223,7 @@ def run_loop(llm: LLM, data, embeddings, question):
     while question:
         logging.info("Answering '%s'", question)
 
-        context_ids, rejected_ids = get_context_ids(llm, question, data, embeddings)
+        context_ids, rejected_ids = get_context_ids(question, corpus, llm)
 
         if context_ids:
             print("---- Accepted ----")
@@ -240,9 +250,6 @@ if __name__ == "__main__":
 
     env = dotenv.dotenv_values()
     client = OpenAI(api_key=env["PULZE_API_KEY"], base_url="https://api.pulze.ai/v1")
-    llm_ = LLM(client, MODEL, MAX_ANSWER_TOKENS)
-
-    data_, embeddings_ = load_data_embeddings()
 
     initial_question = random.choice(INITIAL_QUESTIONS)
-    run_loop(llm_, data_, embeddings_, initial_question)
+    run_loop(LLM(client, MODEL, MAX_ANSWER_TOKENS), load_corpus(), initial_question)

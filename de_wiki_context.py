@@ -37,6 +37,7 @@ EMBEDDINGS_PATH = f"data/de-wiki-multilingual-e5-large-top-{EMBEDDINGS_HOW_MANY_
 CONTEXT_CHOICES = 20
 MODEL = "anthropic/claude-2"
 MODEL_CONTEXT_LENGTH = 8192
+MODEL_CLAUDE_FIX = "claude" in MODEL
 
 MAX_ANSWER_TOKENS = min(4096, MODEL_CONTEXT_LENGTH)
 
@@ -77,12 +78,28 @@ def build_context(context_chunks):
     )
 
 
-def context_rescoring_prompt(query, context_chunks):
-    """Prepare a rescoring prompt for context chunks"""
-    return f"""
+def claude_prompt_fix(prompt):
+    return (
+        prompt
+        if not MODEL_CLAUDE_FIX
+        else f"""
 
 
 Human:
+{prompt}
+
+
+Please output your answer within <answer></answer> tags.
+
+
+Assistant: <answer>"""
+    )
+
+
+def context_rescoring_prompt(query, context_chunks):
+    """Prepare a rescoring prompt for context chunks"""
+    return claude_prompt_fix(
+        f"""
 You are part of a text retrieval engine for German language. Your goal is to check whether the context, retrieved from the vector database, is helpful when answering the query asked.
 
 The query: {query}
@@ -91,37 +108,28 @@ Context pieces, taken from Wikipedia articles, that you need to check:
  {build_context(context_chunks)}
  
 Provide the list of ids of context pieces that help answer the question posed, in the JSON format. Do not give any other output. Example output: 
-[76, 23, 32344123]
-
-
-Please output your answer within <answer></answer> tags.
-Assistant: <answer>"""
+[76, 23, 32344123]"""
+    )
 
 
 def question_prompt(query, context_string=None):
     """Prepare a question prompt that optionally includes a context"""
-    return (
-        f"""
-
-
-Human:
-You are a question-answer engine who takes great care to provide the most accurate answer. 
-Answer the following question in German to the best of your ability: {query}
-Aim at several paragraphs that show clear and reasoned thinking. 
-    """
-        + (
-            ""
-            if not context_string
-            else f"""
+    context_query = (
+        ""
+        if not context_string
+        else f"""
 The following context pieces, taken from recent Wikipedia articles, might be helpful in the answer:
 {context_string}
+
 """
-        )
-        + """
-Please output your answer within <answer></answer> tags.
+    )
 
-
-Assistant: <answer>"""
+    return claude_prompt_fix(
+        f"""You are a question-answer engine who takes great care to provide the most accurate answer. 
+Answer the following question in German to the best of your ability: {query}
+Aim at several paragraphs that show clear and reasoned thinking. 
+{context_query}
+"""
     )
 
 

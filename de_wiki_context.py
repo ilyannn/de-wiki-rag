@@ -161,24 +161,21 @@ def get_context_ids(
         logging.error("API wasn't happy: %s", e)
     else:
         try:
-            if completion[0] == "[" or completion[0].isdigit():
-                accepted_id_string = completion
-            else:
-                # While ChatGPT mostly correctly returns only the ids in JSON format,
-                # some other models may add text before and after the chunk id list.
-                accepted_id_string = next(
-                    s
-                    for s in completion.split("\n")
-                    if s
-                    and all(
-                        all(ch.isdigit() or ch in "[]," for ch in sub)
-                        for sub in s.split()
-                    )
+            # While ChatGPT mostly correctly returns only the ids in JSON format,
+            # some other models may add text before and after the chunk id list.
+            accepted_id_string = next(
+                s
+                for s in completion.split("\n")
+                if s
+                and all(
+                    all(ch.isdigit() or ch in "[]," for ch in sub)
+                    for sub in s.split()
                 )
+            )
 
-                if "], [" in accepted_id_string:
-                    # Another output format bug with Claude
-                    accepted_id_string = accepted_id_string.replace("], [", ", ")
+            if "], [" in accepted_id_string:
+                # Another output format bug with Claude
+                accepted_id_string = accepted_id_string.replace("], [", ", ")
 
             try:
                 returned_ids = json.loads(accepted_id_string)

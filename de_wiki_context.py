@@ -45,11 +45,14 @@ MAX_ANSWER_TOKENS = min(4096, MODEL_CONTEXT_LENGTH)
 class Corpus:
     def __init__(
         self,
-        data: dict[int:str],
+        data: dict[int:dict[str:str]],
         embeddings: Embeddings,
     ):
         self.data = data
         self.embeddings = embeddings
+
+    def format_chunk(self, chunk_id):
+        return f"""{chunk_id} [{self.data[chunk_id]["title"]}] {self.data[chunk_id]["text"]}"""
 
 
 def load_corpus() -> Corpus:
@@ -215,11 +218,6 @@ def get_context_ids(
 def run_loop(llm: LLM, corpus: Corpus, question: str):
     """Run an interactive loop to test the context retrieval"""
 
-    data = corpus.data
-
-    def format_chunk(chunk_id):
-        return f"""{chunk_id} [{data[chunk_id]["title"]}] {data[chunk_id]["text"]}"""
-
     while question:
         logging.info("Answering '%s'", question)
 
@@ -228,13 +226,13 @@ def run_loop(llm: LLM, corpus: Corpus, question: str):
         if context_ids:
             print("---- Accepted ----")
             for cid in context_ids:
-                print(format_chunk(cid))
+                print(corpus.format_chunk(cid))
 
             print("---- Rejected ----")
             for cid in rejected_ids:
-                print(format_chunk(cid))
+                print(corpus.format_chunk(cid))
 
-            context = build_context(data[cid] for cid in context_ids)
+            context = build_context(corpus.data[cid] for cid in context_ids)
 
             print("---- Without context ----")
             print(llm.answer(question_prompt(question)))

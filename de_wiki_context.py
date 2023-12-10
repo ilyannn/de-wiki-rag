@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import random
+import re
 
 import dotenv
 import openai
@@ -35,9 +36,9 @@ EMBEDDINGS_HOW_MANY_K = 1500  # note the total size of the dataset is 15m embedd
 EMBEDDINGS_PATH = f"data/de-wiki-multilingual-e5-large-top-{EMBEDDINGS_HOW_MANY_K}k"
 
 CONTEXT_CHOICES = 20
-MODEL = "openai/gpt-4-1106-preview"
+MODEL = "pulze"
 MODEL_CONTEXT_LENGTH = 8192
-MODEL_CLAUDE_FIX = "claude" in MODEL
+MODEL_CLAUDE_FIX = "claude" in MODEL or "pulze" in MODEL
 
 MAX_ANSWER_TOKENS = min(4096, MODEL_CONTEXT_LENGTH)
 
@@ -142,7 +143,7 @@ def run_loop(client, data, embeddings, question):
         encoding = tiktoken.encoding_for_model("gpt-4")
 
     def complete(prompt, output_json: bool = False):
-        return (
+        response_content = (
             client.chat.completions.create(
                 messages=[
                     {
@@ -157,7 +158,13 @@ def run_loop(client, data, embeddings, question):
             )
             .choices[0]
             .message.content
-        ).removesuffix("</answer>")
+        )
+
+        # Sometimes we get "bla bla bla <answer>good stuff</answer> bla bla bla"
+        # Sometimes we get "bla bla bla: good stuff</answer>"
+        if "<answer>" not in response_content:
+            return response_content.removesuffix("</answer>")
+        return re.search(r"<answer>(.*?)</answer>", response_content).group(1)
 
     def format_chunk(chunk_id):
         return f"""{chunk_id} [{data[chunk_id]["title"]}] {data[chunk_id]["text"]}"""
@@ -200,7 +207,11 @@ def run_loop(client, data, embeddings, question):
                             for sub in s.split()
                         )
                     )
-
+                    
+                    if "], [" in accepted_id_string:
+                        # Another output format bug with Claude
+                        accepted_id_string = accepted_id_string.replace("], [", ", ")
+                        
                 try:
                     returned_ids = json.loads(accepted_id_string)
                     assert isinstance(returned_ids, list) and all(

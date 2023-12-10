@@ -1,10 +1,27 @@
 import re
+
 import tiktoken
 
 ANSWER_REGEX = re.compile(r"<answer>(.*?)</answer>", flags=re.DOTALL)
 
 
 class LLM:
+    """
+    The `LLM` class represents a large language model used for generating answers based on prompts.
+
+    Attributes:
+        - client: The client object used for making API requests (OpenAI compatible).
+        - model_name: The name of the language model.
+        - max_answer_tokens: The maximum number of tokens to generate in the answer.
+        - use_claude_fix: A boolean indicating whether to use the fix for better results in Anthropic models.
+        - encoding: The tokenizer used for the language model.
+
+    Methods:
+        - __init__(self, client, model_name, max_answer_tokens): Initializes the LLM object with the specified arguments.
+        - claude_prompt_fix(self, prompt): Fixes the prompt for better results in Anthropic models.
+        - answer(self, prompt, output_json=False): Generates an answer based on the prompt.
+    """
+
     def __init__(self, client, model_name, max_answer_tokens):
         self.client = client
         self.model_name = model_name

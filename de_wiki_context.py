@@ -10,14 +10,14 @@ import json
 import logging
 import os
 import random
-import re
 
 import dotenv
 import openai
-import tiktoken
 from datasets import load_dataset, load_from_disk
 from openai import OpenAI
 from txtai import Embeddings
+
+from llm import LLM
 
 INITIAL_QUESTIONS = [
     "How many wives can a man have in Germany?",
@@ -38,7 +38,6 @@ EMBEDDINGS_PATH = f"data/de-wiki-multilingual-e5-large-top-{EMBEDDINGS_HOW_MANY_
 CONTEXT_CHOICES = 20
 MODEL = "pulze"
 MODEL_CONTEXT_LENGTH = 8192
-MODEL_CLAUDE_FIX = "claude" in MODEL or "pulze" in MODEL
 
 MAX_ANSWER_TOKENS = min(4096, MODEL_CONTEXT_LENGTH)
 
@@ -79,29 +78,9 @@ def build_context(context_chunks):
     )
 
 
-def claude_prompt_fix(prompt):
-    """This seems to give better results for Anthropic models"""
-    return (
-        prompt
-        if not MODEL_CLAUDE_FIX
-        else f"""
-
-
-Human:
-{prompt}
-
-
-Please output your answer within <answer></answer> tags.
-
-
-Assistant: <answer>"""
-    )
-
-
 def context_rescoring_prompt(query, context_chunks):
     """Prepare a rescoring prompt for context chunks"""
-    return claude_prompt_fix(
-        f"""
+    return f"""
 You are part of a text retrieval engine for German language. Your goal is to check whether the context, retrieved from the vector database, is helpful when answering the query asked.
 
 The query: {query}
@@ -111,7 +90,6 @@ Context pieces, taken from Wikipedia articles, that you need to check:
  
 Provide the list of ids of context pieces that help answer the question posed, in the JSON format. Do not give any other output. Do not add any ticks or other symbols around JSON. Example output: 
 [76, 23, 32344123]"""
-    )
 
 
 def question_prompt(query, context_string=None):
@@ -126,45 +104,108 @@ The following context pieces, taken from recent Wikipedia articles, might be hel
 """
     )
 
-    return claude_prompt_fix(
-        f"""You are a question-answer engine who takes great care to provide the most accurate answer. 
+    return f"""You are a question-answer engine who takes great care to provide the most accurate answer. 
 Answer the following question in German to the best of your ability: {query}
 Aim at several paragraphs that show clear and reasoned thinking. 
 {context_query}
 """
-    )
 
 
-def run_loop(client, data, embeddings, question):
-    """Run an interactive loop to test the context retrieval"""
-    try:
-        encoding = tiktoken.encoding_for_model(MODEL)
-    except KeyError:
-        encoding = tiktoken.encoding_for_model("gpt-4")
+def get_context_ids(
+    llm: LLM,
+    question: str,
+    data: dict[int:str],
+    embeddings: Embeddings,
+) -> (list[int], list[int]):
+    """
+    :param llm: The language model abstraction used for completion.
+    :param question: The question for which we want to find the context.
+    :param data: Chunks of context within which we look for context.
+    :param embeddings: The embeddings of data.
+    :return: A tuple containing suggested context IDs and IDs rejected when scoring.
 
-    def complete(prompt, output_json: bool = False):
-        response_content = (
-            client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    }
-                ],
-                model=MODEL,
-                # This parameter is not supported by Pulze
-                response_format=("json_object" if output_json else "text"),
-                max_tokens=MAX_ANSWER_TOKENS,
-            )
-            .choices[0]
-            .message.content
+    This method searches for context IDs within the provided embeddings based on the given question.
+    It then performs a rescore with the language model.
+    If any invented (hallucinated) IDs are found, they are logged.
+    Finally, the method returns the accepted and rejected IDs as a tuple or a (None, None) pair
+    """
+    ids_scores = embeddings.search(question, limit=CONTEXT_CHOICES)
+    for row_id, score in ids_scores:
+        logging.debug(score, data[row_id])
+
+    while True:
+        rescoring_prompt = context_rescoring_prompt(
+            question,
+            (data[row_id] for row_id, _ in ids_scores),
         )
+        prompt_length = len(llm.encoding.encode(rescoring_prompt))
+        logging.debug(rescoring_prompt)
+        if prompt_length <= MODEL_CONTEXT_LENGTH:
+            break
+        ids_scores = ids_scores[: len(ids_scores) // 2]
 
-        # Sometimes we get "bla bla bla <answer>good stuff</answer> bla bla bla"
-        # Sometimes we get "bla bla bla: good stuff</answer>"
-        if "<answer>" not in response_content:
-            return response_content.removesuffix("</answer>")
-        return re.search(r"<answer>(.*?)</answer>", response_content).group(1)
+    try:
+        completion = llm.answer(rescoring_prompt, output_json=True)
+    except openai.BadRequestError as e:
+        logging.error("API wasn't happy: %s", e)
+    else:
+        try:
+            if completion[0] == "[" or completion[0].isdigit():
+                accepted_id_string = completion
+            else:
+                # While ChatGPT mostly correctly returns only the ids in JSON format,
+                # some other models may add text before and after the chunk id list.
+                accepted_id_string = next(
+                    s
+                    for s in completion.split("\n")
+                    if s
+                    and all(
+                        all(ch.isdigit() or ch in "[]," for ch in sub)
+                        for sub in s.split()
+                    )
+                )
+
+                if "], [" in accepted_id_string:
+                    # Another output format bug with Claude
+                    accepted_id_string = accepted_id_string.replace("], [", ", ")
+
+            try:
+                returned_ids = json.loads(accepted_id_string)
+                assert isinstance(returned_ids, list) and all(
+                    isinstance(i, int) for i in returned_ids
+                )
+            except (AssertionError, json.JSONDecodeError):
+                returned_ids = [int(s) for s in accepted_id_string.split()]
+
+            assert isinstance(returned_ids, list) and all(
+                isinstance(i, int) for i in returned_ids
+            )
+
+            if invented_ids := set(returned_ids) - {row_id for row_id, _ in ids_scores}:
+                logging.info(
+                    f"The model invented following context IDs: {invented_ids}"
+                )
+
+            accepted_ids = [
+                row_id for row_id in returned_ids if row_id not in invented_ids
+            ]
+
+            rejected_ids = set(cid for cid, _ in ids_scores) - set(accepted_ids)
+
+            return accepted_ids, rejected_ids
+
+        except (ValueError, AssertionError, StopIteration):
+            logging.warning(
+                "Received a response to '%s' that I cannot parse: '%s'",
+                rescoring_prompt,
+                completion,
+            )
+
+    return [], []
+
+
+def run_loop(llm: LLM, data, embeddings, question):
+    """Run an interactive loop to test the context retrieval"""
 
     def format_chunk(chunk_id):
         return f"""{chunk_id} [{data[chunk_id]["title"]}] {data[chunk_id]["text"]}"""
@@ -172,91 +213,24 @@ def run_loop(client, data, embeddings, question):
     while question:
         logging.info("Answering '%s'", question)
 
-        ids_scores = embeddings.search(question, limit=CONTEXT_CHOICES)
-        for row_id, score in ids_scores:
-            logging.debug(score, data[row_id])
+        context_ids, rejected_ids = get_context_ids(llm, question, data, embeddings)
 
-        while True:
-            rescoring_prompt = context_rescoring_prompt(
-                question,
-                (data[row_id] for row_id, _ in ids_scores),
-            )
-            prompt_length = len(encoding.encode(rescoring_prompt))
-            logging.debug(rescoring_prompt)
-            if prompt_length <= MODEL_CONTEXT_LENGTH:
-                break
-            ids_scores = ids_scores[: len(ids_scores) // 2]
+        if context_ids:
+            print("---- Accepted ----")
+            for cid in context_ids:
+                print(format_chunk(cid))
 
-        try:
-            completion = complete(rescoring_prompt, output_json=True)
-        except openai.BadRequestError as e:
-            logging.error("API wasn't happy: %s", e)
-        else:
-            try:
-                if completion[0] == "[" or completion[0].isdigit():
-                    accepted_id_string = completion
-                else:
-                    # While ChatGPT mostly correctly returns only the ids in JSON format,
-                    # some other models may add text before and after the chunk id list.
-                    accepted_id_string = next(
-                        s
-                        for s in completion.split("\n")
-                        if s
-                        and all(
-                            all(ch.isdigit() or ch in "[]," for ch in sub)
-                            for sub in s.split()
-                        )
-                    )
-                    
-                    if "], [" in accepted_id_string:
-                        # Another output format bug with Claude
-                        accepted_id_string = accepted_id_string.replace("], [", ", ")
-                        
-                try:
-                    returned_ids = json.loads(accepted_id_string)
-                    assert isinstance(returned_ids, list) and all(
-                        isinstance(i, int) for i in returned_ids
-                    )
-                except (AssertionError, json.JSONDecodeError):
-                    returned_ids = [int(s) for s in accepted_id_string.split()]
+            print("---- Rejected ----")
+            for cid in rejected_ids:
+                print(format_chunk(cid))
 
-                assert isinstance(returned_ids, list) and all(
-                    isinstance(i, int) for i in returned_ids
-                )
+            context = build_context(data[cid] for cid in context_ids)
 
-                if invented_ids := set(returned_ids) - {
-                    row_id for row_id, _ in ids_scores
-                }:
-                    logging.info(
-                        f"The model invented following context IDs: {invented_ids}"
-                    )
+            print("---- Without context ----")
+            print(llm.answer(question_prompt(question)))
 
-                print("---- Accepted ----")
-                accepted_ids = [
-                    row_id for row_id in returned_ids if row_id not in invented_ids
-                ]
-                for cid in accepted_ids:
-                    print(format_chunk(cid))
-
-                print("---- Rejected ----")
-                rejected_ids = set(cid for cid, _ in ids_scores) - set(accepted_ids)
-                for cid in rejected_ids:
-                    print(format_chunk(cid))
-
-                context = build_context(data[cid] for cid in accepted_ids)
-
-                print("---- Without context ----")
-                print(complete(question_prompt(question)))
-
-                print("---- With context ----")
-                print(complete(question_prompt(question, context)))
-
-            except (ValueError, AssertionError, StopIteration):
-                logging.warning(
-                    "Received a response to '%s' that I cannot parse: '%s'",
-                    rescoring_prompt,
-                    completion,
-                )
+            print("---- With context ----")
+            print(llm.answer(question_prompt(question, context)))
 
         question = input("---- Question: ")
 
@@ -265,8 +239,10 @@ if __name__ == "__main__":
     logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
     env = dotenv.dotenv_values()
-    client_ = OpenAI(api_key=env["PULZE_API_KEY"], base_url="https://api.pulze.ai/v1")
+    client = OpenAI(api_key=env["PULZE_API_KEY"], base_url="https://api.pulze.ai/v1")
+    llm_ = LLM(client, MODEL, MAX_ANSWER_TOKENS)
+
     data_, embeddings_ = load_data_embeddings()
 
     initial_question = random.choice(INITIAL_QUESTIONS)
-    run_loop(client_, data_, embeddings_, initial_question)
+    run_loop(llm_, data_, embeddings_, initial_question)

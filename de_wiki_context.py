@@ -35,7 +35,7 @@ EMBEDDINGS_HOW_MANY_K = 1500  # note the total size of the dataset is 15m embedd
 EMBEDDINGS_PATH = f"data/de-wiki-multilingual-e5-large-top-{EMBEDDINGS_HOW_MANY_K}k"
 
 CONTEXT_CHOICES = 20
-MODEL = "anthropic/claude-2"
+MODEL = "openai/gpt-4-1106-preview"
 MODEL_CONTEXT_LENGTH = 8192
 MODEL_CLAUDE_FIX = "claude" in MODEL
 
@@ -79,6 +79,7 @@ def build_context(context_chunks):
 
 
 def claude_prompt_fix(prompt):
+    """This seems to give better results for Anthropic models"""
     return (
         prompt
         if not MODEL_CLAUDE_FIX
@@ -107,7 +108,7 @@ The query: {query}
 Context pieces, taken from Wikipedia articles, that you need to check:
  {build_context(context_chunks)}
  
-Provide the list of ids of context pieces that help answer the question posed, in the JSON format. Do not give any other output. Example output: 
+Provide the list of ids of context pieces that help answer the question posed, in the JSON format. Do not give any other output. Do not add any ticks or other symbols around JSON. Example output: 
 [76, 23, 32344123]"""
     )
 
@@ -150,6 +151,7 @@ def run_loop(client, data, embeddings, question):
                     }
                 ],
                 model=MODEL,
+                # This parameter is not supported by Pulze
                 response_format=("json_object" if output_json else "text"),
                 max_tokens=MAX_ANSWER_TOKENS,
             )
@@ -187,8 +189,8 @@ def run_loop(client, data, embeddings, question):
                 if completion[0] == "[" or completion[0].isdigit():
                     accepted_id_string = completion
                 else:
-                    # While ChatGPT correctly returns only the ids of accepted chunks in JSON format,
-                    # other models may add text before the chunk id list.
+                    # While ChatGPT mostly correctly returns only the ids in JSON format,
+                    # some other models may add text before and after the chunk id list.
                     accepted_id_string = next(
                         s
                         for s in completion.split("\n")
@@ -245,7 +247,7 @@ def run_loop(client, data, embeddings, question):
                     completion,
                 )
 
-        question = input("Question: ")
+        question = input("---- Question: ")
 
 
 if __name__ == "__main__":

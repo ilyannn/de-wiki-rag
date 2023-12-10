@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """Script to generate the context provided for questions.
 
 We go through a list of questions one by one and generate the context using the get_context_ids

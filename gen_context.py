@@ -1,3 +1,16 @@
+"""Script to generate the context provided for questions.
+
+We go through a list of questions one by one and generate the context using the get_context_ids
+method from the de_wiki_context.py module.
+
+These ids as well as corresponding texts are stored in the Redis.
+
+By default, the script stops after the first few questions, change MAX_QUESTIONS to process more.
+The script is idempotent, so it will not change the data if they are already in Redis.
+
+You'll need access to the main codebase as well as a Pulze API key and Redis access data
+in the .env file to run this script.
+"""
 import logging
 import os
 import sys
@@ -25,7 +38,7 @@ MAX_QUESTIONS = 25
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
+    logging.basicConfig(format="%(asctime)s %(message)s", level=logging.WARNING)
 
     api_key = os.environ["PULZE_API_KEY"]
     client = OpenAI(api_key=api_key, base_url="https://api.pulze.ai/v1")

@@ -1,5 +1,7 @@
 import re
 
+from openai import OpenAI
+
 import tiktoken
 
 ANSWER_REGEX = re.compile(r"<answer>(.*?)</answer>", flags=re.DOTALL)
@@ -22,7 +24,7 @@ class LLM:
         - answer(self, prompt, output_json=False): Generates an answer based on the prompt.
     """
 
-    def __init__(self, client, model_name, max_answer_tokens):
+    def __init__(self, client: OpenAI, model_name, max_answer_tokens):
         self.client = client
         self.model_name = model_name
         self.max_answer_tokens = max_answer_tokens
@@ -51,7 +53,7 @@ class LLM:
     Assistant: <answer>"""
         )
 
-    def answer(self, prompt, output_json: bool = False):
+    def answer(self, prompt, output_json: bool = False, **kwargs):
         """Ask LLM and parse the answer.
 
         :param prompt: The prompt for generating the answer.
@@ -68,8 +70,9 @@ class LLM:
                 ],
                 model=self.model_name,
                 # This parameter is not supported by Pulze
-                response_format=("json_object" if output_json else "text"),
+                response_format={"type": "json_object" if output_json else "text"},
                 max_tokens=self.max_answer_tokens,
+                **kwargs,
             )
             .choices[0]
             .message.content

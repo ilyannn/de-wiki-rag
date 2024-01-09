@@ -14,6 +14,7 @@ fmt:
 # lint Markdown, YAML and Python files
 lint:
     yamllint --config-file .github/linters/.yaml-lint.yml -- {{yaml_files}}
+    markdownlint -- {{markdown_files}}
     prettier --check -- {{markdown_files}} {{yaml_files}}
     flake8 --config .github/linters/.flake8 -- {{python_files}}
     isort --settings-path .github/linters/.isort.cfg  --check --diff -- {{python_files}}

@@ -182,7 +182,7 @@ def get_context_ids(
             name="de-wiki-context",
             metadata={"question": question, "rescoring_context": rescoring_context},
         )
-        
+
         if trace:
             generation.end(
                 output=completion,
@@ -235,7 +235,7 @@ def get_context_ids(
             ]
 
             rejected_ids = set(cid for cid, _ in ids_scores) - set(accepted_ids)
-            
+
             return accepted_ids, list(rejected_ids)
 
         except (ValueError, AssertionError, StopIteration):

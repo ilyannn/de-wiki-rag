@@ -81,4 +81,5 @@ class LLM:
         # Sometimes we get "bla bla bla: good stuff</answer>"
         if "<answer>" not in response_content:
             return response_content.removesuffix("</answer>")
-        return ANSWER_REGEX.search(response_content).group(1)
+        match = ANSWER_REGEX.search(response_content)
+        return match.group(1) if match else None

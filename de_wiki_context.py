@@ -11,6 +11,7 @@ import logging
 import os
 import random
 from datetime import datetime
+from typing import Tuple
 
 import dotenv
 from datasets import load_dataset, load_from_disk
@@ -46,7 +47,7 @@ MAX_ANSWER_TOKENS = min(4096, MODEL_CONTEXT_LENGTH)
 class Corpus:
     def __init__(
         self,
-        data: dict[int : dict[str:str]],
+        data: dict[int, dict[str, str]],
         embeddings: Embeddings,
     ):
         self.data = data
@@ -129,8 +130,8 @@ def get_context_ids(
     question: str,
     corpus: Corpus,
     llm: LLM,
-    trace,
-) -> (list[int], list[int]):
+    trace=None,
+) -> Tuple[list[int], list[int]]:
     """
     :param question: The question for which we want to find the context.
     :param corpus: Corpus within which we look for context.
@@ -165,12 +166,15 @@ def get_context_ids(
         ids_scores = ids_scores[: len(ids_scores) // 2]
 
     try:
-        # creates generation
-        generation = trace.generation(
-            name="context-rescoring",
-            model=MODEL,
-            #            model_parameters={"maxTokens": "1000", "temperature": "0.9"},
-        )
+        if trace:
+            # creates generation
+            generation = trace.generation(
+                name="context-rescoring",
+                model=MODEL,
+                #            model_parameters={"maxTokens": "1000", "temperature": "0.9"},
+            )
+        else:
+            generation = None
 
         completion = llm.answer(
             rescoring_prompt,
@@ -178,10 +182,11 @@ def get_context_ids(
             name="de-wiki-context",
             metadata={"question": question, "rescoring_context": rescoring_context},
         )
-
-        generation.end(
-            output=completion,
-        )
+        
+        if trace:
+            generation.end(
+                output=completion,
+            )
     except openai.BadRequestError as e:
         logging.error("API wasn't happy: %s", e)
     else:
@@ -230,8 +235,8 @@ def get_context_ids(
             ]
 
             rejected_ids = set(cid for cid, _ in ids_scores) - set(accepted_ids)
-
-            return accepted_ids, rejected_ids
+            
+            return accepted_ids, list(rejected_ids)
 
         except (ValueError, AssertionError, StopIteration):
             logging.warning(

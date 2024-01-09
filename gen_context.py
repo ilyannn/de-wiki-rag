@@ -1,37 +1,28 @@
-#!/usr/bin/env python
-"""Script to generate the context provided for questions.
-
-We go through a list of questions one by one and generate the context using the get_context_ids
-method from the de_wiki_context.py module.
-
-These ids as well as corresponding texts are stored in the Redis.
-
-By default, the script stops after the first few questions, change MAX_QUESTIONS to process more.
-The script is idempotent, so it will not change the data if they are already in Redis.
-
-You'll need access to the main codebase as well as a Pulze API key and Redis access data
-in the .env file to run this script.
-"""
 import logging
 import os
 import sys
 
-# Local imports
-from de_wiki_context import get_context_ids, load_corpus
 from dotenv import load_dotenv
 from llm import LLM
 from openai import OpenAI
 from redis import Redis
 
+# isort: off
+
+# Local imports
+from de_wiki_context import get_context_ids, load_corpus
+from data.read_data import questions
+
 # Imports from the main project
 load_dotenv()
 sys.path.append(os.environ["MAIN_PROJECT"])
-from access_redis import (
+from access_redis import (  # noqa: E402
     create_redis_client,
     get_redis_context_ids,
     put_redis_context_ids,
 )
-from data.read_data import questions
+
+# isort: on
 
 MAX_QUESTIONS = 25
 

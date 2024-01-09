@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Generate context using German Wikipedia articles.
 
-We take the top 10% paragraphs (ranked by article views), embed them using a large 
+We take the top 10% paragraphs (ranked by article views), embed them using a large
 multilingual model, and cache the embeddings.
 For each question, we retrieve the pieces of context and rescore them using Pulze API.
 We demonstrate what the answers look with and without using the context.
@@ -78,7 +78,7 @@ def load_corpus() -> Corpus:
     except FileNotFoundError:
         top_data = next(data.iter(EMBEDDINGS_HOW_MANY_K * 1000))
         embeddings.index(top_data["text"])
-        logging.debug(f"Indexed following pages: %s", set(top_data["title"]))
+        logging.debug("Indexed following pages: %s", set(top_data["title"]))
         embeddings.save(EMBEDDINGS_PATH)
         logging.info(f"Saved {embeddings.count()} embeddings to {EMBEDDINGS_PATH}")
 
@@ -101,8 +101,8 @@ The query: {query}
 
 Context pieces, taken from Wikipedia articles, that you need to check:
  {build_context(context_chunks)}
- 
-Provide the list of ids of context pieces that help answer the question posed, in the JSON format. Do not give any other output. Do not add any ticks or other symbols around JSON. Example output: 
+
+Provide the list of ids of context pieces that help answer the question posed, in the JSON format. Do not give any other output. Do not add any ticks or other symbols around JSON. Example output:
 [76, 23, 32344123]"""
 
 
@@ -118,9 +118,9 @@ The following context pieces, taken from recent Wikipedia articles, might be hel
 """
     )
 
-    return f"""You are a question-answer engine who takes great care to provide the most accurate answer. 
+    return f"""You are a question-answer engine who takes great care to provide the most accurate answer.
 Answer the following question in German to the best of your ability: {query}
-Aim at several paragraphs that show clear and reasoned thinking. 
+Aim at several paragraphs that show clear and reasoned thinking.
 {context_query}
 """
 

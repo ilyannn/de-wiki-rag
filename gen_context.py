@@ -27,8 +27,11 @@ from llm import LLM
 # Imports from the main project
 load_dotenv()
 sys.path.append(os.environ["MAIN_PROJECT"])
-from access_redis import (create_redis_client, get_redis_context_ids,
-                          put_redis_context_ids)
+from access_redis import (
+    create_redis_client,
+    get_redis_context_ids,
+    put_redis_context_ids,
+)
 from data.read_data import questions
 
 MAX_QUESTIONS = 25

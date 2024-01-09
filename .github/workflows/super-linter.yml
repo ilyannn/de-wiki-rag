@@ -25,7 +25,5 @@ jobs:
         uses: github/super-linter@v5
         env:
           DEFAULT_BRANCH: "master"
-          FILTER_REGEX_EXCLUDE: ".*_(values|backup).yaml$"
-          KUBERNETES_KUBECONFORM_OPTIONS: "--ignore-missing-schemas"
           VALIDATE_ALL_CODEBASE: true
           VALIDATE_PYTHON_MYPY: false

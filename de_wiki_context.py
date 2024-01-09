@@ -13,9 +13,9 @@ import random
 from datetime import datetime
 
 import dotenv
+from datasets import load_dataset, load_from_disk
 from langfuse import Langfuse
 from langfuse.openai import openai
-from datasets import load_dataset, load_from_disk
 from openai import OpenAI
 from txtai import Embeddings
 

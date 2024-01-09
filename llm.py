@@ -1,8 +1,7 @@
 import re
 
-from openai import OpenAI
-
 import tiktoken
+from openai import OpenAI
 
 ANSWER_REGEX = re.compile(r"<answer>(.*?)</answer>", flags=re.DOTALL)
 

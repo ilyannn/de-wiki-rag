@@ -16,10 +16,9 @@ import dotenv
 from datasets import load_dataset, load_from_disk
 from langfuse import Langfuse
 from langfuse.openai import openai
+from llm import LLM
 from openai import OpenAI
 from txtai import Embeddings
-
-from llm import LLM
 
 INITIAL_QUESTIONS = [
     "How many wives can a man have in Germany?",

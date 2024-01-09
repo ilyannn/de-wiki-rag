@@ -16,13 +16,12 @@ import logging
 import os
 import sys
 
-from dotenv import load_dotenv
-from openai import OpenAI
-from redis import Redis
-
 # Local imports
 from de_wiki_context import get_context_ids, load_corpus
+from dotenv import load_dotenv
 from llm import LLM
+from openai import OpenAI
+from redis import Redis
 
 # Imports from the main project
 load_dotenv()
